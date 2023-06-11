@@ -20,12 +20,17 @@ class MassSpringSystem:
                           background_color=0xdddddd)
         self.g_coordinate = ti.Vector.field(n=self.spatial_dim,
                                             dtype=ti.f32,
-                                            shape=[self.max_num_particles])
+                                            shape=[self.max_num_particles],
+                                            needs_grad=True)
         self.g_velocity = ti.Vector.field(n=self.spatial_dim,
                                           dtype=ti.f32,
                                           shape=[self.max_num_particles])
+        self.v = ti.field(ti.f32, shape=(), needs_grad=True)
+        self.force = ti.Vector.field(n=self.spatial_dim,
+                                     dtype=ti.f32,
+                                     shape=[self.max_num_particles])
         self.adjacent_field = ti.field(
-            dtype=ti.i8,
+            dtype=ti.f32,
             shape=[self.max_num_particles, self.max_num_particles])
         self.adjacent_distance = ti.field(
             dtype=ti.f32,
@@ -34,6 +39,9 @@ class MassSpringSystem:
     def run(self):
         while self.gui.running:
             self.update_events()
+            with ti.ad.Tape(loss=self.v):
+                self.update_potential()
+            self.update_force()
             self.update_dynamics()
             self.update_gui()
             self.gui.show()
@@ -70,7 +78,7 @@ class MassSpringSystem:
     @ti.func
     def update_adjacent(self):
         for i in range(self.current_num_particles):
-            self.adjacent_field[i, (i + 1) % self.max_num_particles] = ti.i8(1)
+            self.adjacent_field[i, (i + 1) % self.max_num_particles] = ti.f32(1.0)
             self.adjacent_distance[i, (i + 1) % self.max_num_particles] = (
                 self.g_coordinate[i] - self.g_coordinate[i + 1]).norm()
 
@@ -86,8 +94,20 @@ class MassSpringSystem:
         self.g_velocity[self.current_num_particles] = ti.Vector.zero(
             ti.f32, self.spatial_dim)
 
+    @ti.kernel
+    def update_potential(self):
+        for i, j in ti.ndrange(self.current_num_particles, self.current_num_particles):
+            r = self.g_coordinate[i] - self.g_coordinate[j]
+            self.v[None] += 0.5 * self.stiffness * self.adjacent_field[i, j] * ti.math.pow(r.norm(1e-3), 2)
+
+    @ti.kernel
+    def update_force(self):
+        # self.force = self.g_coordinate.grad
+        for i in ti.ndrange(self.current_num_particles):
+            self.force[i] = self.g_coordinate.grad[i]
+
 
 if __name__ == "__main__":
     ti.init(ti.gpu)
-    mass_spring = MassSpringSystem()
+    mass_spring = MassSpringSystem(max_num_particles=10)
     mass_spring.run()
