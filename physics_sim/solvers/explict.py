@@ -1,16 +1,15 @@
-from abc import abstractmethod
 import taichi as ti
+from physics_sim.solvers.solver import Solver
 
 
 @ti.data_oriented
-class Solver:
+class ForwardEulerSolver(Solver):
     def __init__(self) -> None:
-        pass
+        super().__init__()
 
-    @abstractmethod
     @ti.kernel
     def step(self, coordinate: ti.template(), velocity: ti.template(),
              mass: ti.template(), force: ti.template(), dt: ti.template()):
-        """
-        """
-        raise NotImplementedError
+        for i in coordinate:
+            coordinate[i] += velocity[i] * dt
+            velocity[i] += force[i] / mass[i] * dt
