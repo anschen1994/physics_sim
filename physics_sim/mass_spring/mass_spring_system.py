@@ -1,6 +1,6 @@
 import taichi as ti
 import time
-from physics_sim.solvers.solver import Solver
+from physics_sim.solvers.integrator import Integrator
 from physics_sim.constant import GRAVITY
 
 
@@ -11,12 +11,13 @@ class MassSpringSystem:
                  max_num_particles: int = 100,
                  mass: float = 1.0,
                  dt: float = 0.01,
-                 solver: Solver = None,
+                 solver: Integrator = None,
                  spatial_dim: int = 2,
                  stiffness: float = 100,
                  spring_len: float = 0.2,
                  ground_height: float = 0.01,
-                 fps: float = 8) -> None:
+                 fps: float = 8,
+                 has_gravity: bool = False) -> None:
         self.current_num_particles = ti.field(ti.i32, shape=())
         self.current_num_particles[None] = current_num_particles
         self.max_num_particles = max_num_particles
@@ -28,6 +29,10 @@ class MassSpringSystem:
         self.spring_len = spring_len
         self.ground_height = ground_height
         self.fps = fps
+        if has_gravity:
+            self.gravity = GRAVITY
+        else:
+            self.gravity = 0.0
         self.gui = ti.GUI("mass-spring",
                           res=(1024, 1024),
                           background_color=0xdddddd)
@@ -76,7 +81,6 @@ class MassSpringSystem:
 
     def update_gui(self):
         coordinates_ndarr = self.g_coordinate.to_numpy()
-        print(coordinates_ndarr)
         self.gui.circles(coordinates_ndarr, radius=5.0, color=0xED553B)
 
         for i in range(self.current_num_particles[None]):
@@ -123,7 +127,7 @@ class MassSpringSystem:
             r = self.g_coordinate[i] - self.g_coordinate[j]
             self.v[None] += 0.5 * self.stiffness * self.adjacent_field[i, j] * ti.math.pow((r.norm(1e-3) - self.spring_len), 2)
         for i in range(self.current_num_particles[None]):
-            self.v[None] += self.g_mass[i] * GRAVITY * self.g_coordinate[i][1]
+            self.v[None] += self.g_mass[i] * self.gravity * self.g_coordinate[i][1]
 
     @ti.kernel
     def update_force(self):
